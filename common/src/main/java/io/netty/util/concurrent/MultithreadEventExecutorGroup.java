@@ -30,10 +30,25 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public abstract class MultithreadEventExecutorGroup extends AbstractEventExecutorGroup {
 
+    /**
+     * EventExecutor 事件执行器数组
+     */
     private final EventExecutor[] children;
+    /**
+     * 只读事件执行器集合
+     */
     private final Set<EventExecutor> readonlyChildren;
+    /**
+     * 已经终止的事件执行器的数量
+     */
     private final AtomicInteger terminatedChildren = new AtomicInteger();
+    /**
+     * 用于终止 EventExecutor 的异步 Future
+     */
     private final Promise<?> terminationFuture = new DefaultPromise(GlobalEventExecutor.INSTANCE);
+    /**
+     * 事件执行器的选择器
+     */
     private final EventExecutorChooserFactory.EventExecutorChooser chooser;
 
     /**
@@ -72,16 +87,19 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             throw new IllegalArgumentException(String.format("nThreads: %d (expected: > 0)", nThreads));
         }
 
+        // 创建执行器
+        // 这个组下的所有 事件执行器公用一个执行器
         if (executor == null) {
-            // 创建一个线程执行器
             executor = new ThreadPerTaskExecutor(newDefaultThreadFactory());
         }
 
+        // 创建事件执行器数组
         children = new EventExecutor[nThreads];
 
         for (int i = 0; i < nThreads; i ++) {
             boolean success = false;
             try {
+                // 创建事件执行器对象
                 children[i] = newChild(executor, args);
                 success = true;
             } catch (Exception e) {
@@ -109,8 +127,11 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             }
         }
 
+        // 创建事件执行器选择器
+        // 有两种类型可选  2 的幂次方  和 非2 的幂次方
         chooser = chooserFactory.newChooser(children);
 
+        // 创建监听器，用于 EventExecutor 终止时的监听
         final FutureListener<Object> terminationListener = new FutureListener<Object>() {
             @Override
             public void operationComplete(Future<Object> future) throws Exception {
@@ -120,10 +141,12 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             }
         };
 
+        // 监听每一个事件执行器
         for (EventExecutor e: children) {
             e.terminationFuture().addListener(terminationListener);
         }
 
+        // 创建不可变( 只读 )的 EventExecutor 数组
         Set<EventExecutor> childrenSet = new LinkedHashSet<EventExecutor>(children.length);
         Collections.addAll(childrenSet, children);
         readonlyChildren = Collections.unmodifiableSet(childrenSet);

@@ -34,6 +34,10 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(MultithreadEventLoopGroup.class);
 
+    /**
+     * 默认 EventLoop 线程数
+     * CPU * 2
+     */
     private static final int DEFAULT_EVENT_LOOP_THREADS;
 
     static {
@@ -68,18 +72,25 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
         super(nThreads == 0 ? DEFAULT_EVENT_LOOP_THREADS : nThreads, executor, chooserFactory, args);
     }
 
+    /**
+     * 线程工厂  线程命名格式为 nioEventLoopGroup-1-XX
+     */
     @Override
     protected ThreadFactory newDefaultThreadFactory() {
         return new DefaultThreadFactory(getClass(), Thread.MAX_PRIORITY);
     }
 
+    /**
+     *  创建一个EventLoop
+     */
+    @Override
+    protected abstract EventLoop newChild(Executor executor, Object... args) throws Exception;
+
+    /*************   EventLoopGroup 的实现    ******/
     @Override
     public EventLoop next() {
         return (EventLoop) super.next();
     }
-
-    @Override
-    protected abstract EventLoop newChild(Executor executor, Object... args) throws Exception;
 
     @Override
     public ChannelFuture register(Channel channel) {

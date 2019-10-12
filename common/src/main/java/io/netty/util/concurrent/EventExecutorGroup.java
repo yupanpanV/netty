@@ -33,6 +33,7 @@ public interface EventExecutorGroup extends ScheduledExecutorService, Iterable<E
      * Returns {@code true} if and only if all {@link EventExecutor}s managed by this {@link EventExecutorGroup}
      * are being {@linkplain #shutdownGracefully() shut down gracefully} or was {@linkplain #isShutdown() shut down}.
      */
+    // 正在关闭？
     boolean isShuttingDown();
 
     /**
@@ -40,6 +41,7 @@ public interface EventExecutorGroup extends ScheduledExecutorService, Iterable<E
      *
      * @return the {@link #terminationFuture()}
      */
+    // 优雅关闭
     Future<?> shutdownGracefully();
 
     /**
@@ -64,6 +66,28 @@ public interface EventExecutorGroup extends ScheduledExecutorService, Iterable<E
      */
     Future<?> terminationFuture();
 
+
+
+    /**
+     * Returns one of the {@link EventExecutor}s managed by this {@link EventExecutorGroup}.
+     */
+
+    // 选择一个 EventExecutor 对象 大多数都是选择一个NioEventLoop
+    EventExecutor next();
+
+    @Override
+    Iterator<EventExecutor> iterator();
+
+    // ========== 实现自 ExecutorService 接口 ==========
+    @Override
+    Future<?> submit(Runnable task);
+
+    @Override
+    <T> Future<T> submit(Runnable task, T result);
+
+    @Override
+    <T> Future<T> submit(Callable<T> task);
+
     /**
      * @deprecated {@link #shutdownGracefully(long, long, TimeUnit)} or {@link #shutdownGracefully()} instead.
      */
@@ -78,22 +102,7 @@ public interface EventExecutorGroup extends ScheduledExecutorService, Iterable<E
     @Deprecated
     List<Runnable> shutdownNow();
 
-    /**
-     * Returns one of the {@link EventExecutor}s managed by this {@link EventExecutorGroup}.
-     */
-    EventExecutor next();
-
-    @Override
-    Iterator<EventExecutor> iterator();
-
-    @Override
-    Future<?> submit(Runnable task);
-
-    @Override
-    <T> Future<T> submit(Runnable task, T result);
-
-    @Override
-    <T> Future<T> submit(Callable<T> task);
+    // ========== 实现自 ScheduledExecutorService 接口 ==========
 
     @Override
     ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit);

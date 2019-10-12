@@ -30,44 +30,111 @@ import static io.netty.util.concurrent.AbstractEventExecutor.*;
  * Abstract base class for {@link EventExecutorGroup} implementations.
  */
 public abstract class AbstractEventExecutorGroup implements EventExecutorGroup {
+    /**
+     *  将任务提交给EventExecutor 大多数是一个NioEventLoop
+     */
     @Override
     public Future<?> submit(Runnable task) {
         return next().submit(task);
     }
-
+    /**
+     *  将任务提交给EventExecutor 大多数是一个NioEventLoop
+     */
     @Override
     public <T> Future<T> submit(Runnable task, T result) {
         return next().submit(task, result);
     }
-
+    /**
+     *  将任务提交给EventExecutor 大多数是一个NioEventLoop
+     */
     @Override
     public <T> Future<T> submit(Callable<T> task) {
         return next().submit(task);
     }
 
+
+    /**
+     * 把定时任务提交到 EventExecutor中 大多数是一个NioEventLoop
+     */
     @Override
     public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
         return next().schedule(command, delay, unit);
     }
 
+    /**
+     * 把定时任务提交到 EventExecutor中 大多数是一个NioEventLoop
+     */
     @Override
     public <V> ScheduledFuture<V> schedule(Callable<V> callable, long delay, TimeUnit unit) {
         return next().schedule(callable, delay, unit);
     }
 
+    /**
+     * 把定时任务提交到 EventExecutor中 大多数是一个NioEventLoop
+     */
     @Override
     public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
         return next().scheduleAtFixedRate(command, initialDelay, period, unit);
     }
 
+    /**
+     * 把定时任务提交到 EventExecutor中 大多数是一个NioEventLoop
+     */
     @Override
     public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay, long delay, TimeUnit unit) {
         return next().scheduleWithFixedDelay(command, initialDelay, delay, unit);
     }
 
+    /**
+     * 在 EventExecutor 中执行一个普通任务
+     */
+    @Override
+    public void execute(Runnable command) {
+        next().execute(command);
+    }
+
+    /**
+     * 在 EventExecutor 中执行多个普通任务
+     * 并且，多个任务使用同一个 EventExecutor
+     */
+    @Override
+    public <T> List<java.util.concurrent.Future<T>> invokeAll(Collection<? extends Callable<T>> tasks)
+            throws InterruptedException {
+        return next().invokeAll(tasks);
+    }
+    /**
+     * 在 EventExecutor 中执行多个普通任务
+     * 并且，多个任务使用同一个 EventExecutor
+     */
+    @Override
+    public <T> List<java.util.concurrent.Future<T>> invokeAll(
+            Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) throws InterruptedException {
+        return next().invokeAll(tasks, timeout, unit);
+    }
+    /**
+     * 在 EventExecutor 中执行多个普通任务，有一个执行完成即可
+     * 并且，多个任务使用同一个 EventExecutor
+     */
+    @Override
+    public <T> T invokeAny(Collection<? extends Callable<T>> tasks) throws InterruptedException, ExecutionException {
+        return next().invokeAny(tasks);
+    }
+    /**
+     * 在 EventExecutor 中执行多个普通任务，有一个执行完成即可
+     * 并且，多个任务使用同一个 EventExecutor
+     */
+    @Override
+    public <T> T invokeAny(Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit)
+            throws InterruptedException, ExecutionException, TimeoutException {
+        return next().invokeAny(tasks, timeout, unit);
+    }
+
+    /**
+     * 关闭 EventExecutorGroup
+     */
     @Override
     public Future<?> shutdownGracefully() {
-        return shutdownGracefully(DEFAULT_SHUTDOWN_QUIET_PERIOD, DEFAULT_SHUTDOWN_TIMEOUT, TimeUnit.SECONDS);
+        return shutdownGracefully(DEFAULT_SHUTDOWN_QUIET_PERIOD/* 2 */, DEFAULT_SHUTDOWN_TIMEOUT/* 15 */, TimeUnit.SECONDS);
     }
 
     /**
@@ -87,31 +154,4 @@ public abstract class AbstractEventExecutorGroup implements EventExecutorGroup {
         return Collections.emptyList();
     }
 
-    @Override
-    public <T> List<java.util.concurrent.Future<T>> invokeAll(Collection<? extends Callable<T>> tasks)
-            throws InterruptedException {
-        return next().invokeAll(tasks);
-    }
-
-    @Override
-    public <T> List<java.util.concurrent.Future<T>> invokeAll(
-            Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) throws InterruptedException {
-        return next().invokeAll(tasks, timeout, unit);
-    }
-
-    @Override
-    public <T> T invokeAny(Collection<? extends Callable<T>> tasks) throws InterruptedException, ExecutionException {
-        return next().invokeAny(tasks);
-    }
-
-    @Override
-    public <T> T invokeAny(Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit)
-            throws InterruptedException, ExecutionException, TimeoutException {
-        return next().invokeAny(tasks, timeout, unit);
-    }
-
-    @Override
-    public void execute(Runnable command) {
-        next().execute(command);
-    }
 }

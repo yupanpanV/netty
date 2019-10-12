@@ -472,6 +472,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
             AbstractChannel.this.eventLoop = eventLoop;
 
+            // 把JDK NIO ServerSocketChannel 注册到多路复用器上
             if (eventLoop.inEventLoop()) {
                 register0(promise);
             } else {
@@ -493,23 +494,38 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
         }
 
+        /**
+         * 真正注册
+         */
         private void register0(ChannelPromise promise) {
             try {
                 // check if the channel is still open as it could be closed in the mean time when the register
                 // call was outside of the eventLoop
+                // 确保 Channel 是打开的
                 if (!promise.setUncancellable() || !ensureOpen(promise)) {
                     return;
                 }
+
+                // 记录是否为首次注册
                 boolean firstRegistration = neverRegistered;
+                // 执行注册逻辑
+                // 真正的把JDK NIO 注册到多路复用器上去
+                // 但是没有注册感兴趣的事件
                 doRegister();
+                // 标记首次注册为 false
                 neverRegistered = false;
+                // 标记 Channel 为已注册
                 registered = true;
 
                 // Ensure we call handlerAdded(...) before we actually notify the promise. This is needed as the
                 // user may already fire events through the pipeline in the ChannelFutureListener.
+                // 如果有必要的话调用 handlerAdded 方法
                 pipeline.invokeHandlerAddedIfNeeded();
 
+                // 回调通知 `promise` 执行成功
                 safeSetSuccess(promise);
+
+                // 触发通知已注册事件
                 pipeline.fireChannelRegistered();
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.
@@ -534,6 +550,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
         @Override
         public final void bind(final SocketAddress localAddress, final ChannelPromise promise) {
+            // 判断是否在 EventLoop 的线程中。
             assertEventLoop();
 
             if (!promise.setUncancellable() || !ensureOpen(promise)) {
@@ -553,7 +570,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         "address (" + localAddress + ") anyway as requested.");
             }
 
+            // 记录 Channel 是否激活
             boolean wasActive = isActive();
+
+            // 绑定 Channel 的端口
             try {
                 doBind(localAddress);
             } catch (Throwable t) {
@@ -562,6 +582,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 若 Channel 是新激活的，触发通知 Channel 已激活的事件。
             if (!wasActive && isActive()) {
                 invokeLater(new Runnable() {
                     @Override
@@ -571,6 +592,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 });
             }
 
+            // 回调通知 promise 执行成功
             safeSetSuccess(promise);
         }
 
@@ -591,6 +613,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+
+            // 下面执行就到了 AbstractUnsafe#beginRead 方法
             if (wasActive && !isActive()) {
                 invokeLater(new Runnable() {
                     @Override
@@ -837,12 +861,15 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
         @Override
         public final void beginRead() {
+            // 判断是否在 EventLoop 的线程中。
             assertEventLoop();
 
+            // Channel 必须激活
             if (!isActive()) {
                 return;
             }
 
+            // 执行开始读取
             try {
                 doBeginRead();
             } catch (final Exception e) {

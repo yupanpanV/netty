@@ -44,10 +44,27 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ServerBootstrap.class);
 
+
+    /**
+     *  子可选项
+     */
     private final Map<ChannelOption<?>, Object> childOptions = new LinkedHashMap<ChannelOption<?>, Object>();
+    /**
+     *  子额外属性
+     */
     private final Map<AttributeKey<?>, Object> childAttrs = new LinkedHashMap<AttributeKey<?>, Object>();
+    /**
+     *  配置类 其实就是个代理
+     */
     private final ServerBootstrapConfig config = new ServerBootstrapConfig(this);
+    /**
+     *  子EventLoopGroup
+     */
     private volatile EventLoopGroup childGroup;
+
+    /**
+     *  socketChannel 的处理器
+     */
     private volatile ChannelHandler childHandler;
 
     public ServerBootstrap() { }
@@ -140,10 +157,13 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     @Override
     void init(Channel channel) throws Exception {
         final Map<ChannelOption<?>, Object> options = options0();
+
+        // 给 channel设置可选项
         synchronized (options) {
             setChannelOptions(channel, options, logger);
         }
 
+        // 给channel 设置额外属性
         final Map<AttributeKey<?>, Object> attrs = attrs0();
         synchronized (attrs) {
             for (Entry<AttributeKey<?>, Object> e: attrs.entrySet()) {
@@ -153,8 +173,10 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             }
         }
 
+        // DefaultChannelPipeline
         ChannelPipeline p = channel.pipeline();
 
+        // 拷贝 childOptions childAttrs
         final EventLoopGroup currentChildGroup = childGroup;
         final ChannelHandler currentChildHandler = childHandler;
         final Entry<ChannelOption<?>, Object>[] currentChildOptions;
@@ -166,6 +188,9 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             currentChildAttrs = childAttrs.entrySet().toArray(newAttrArray(0));
         }
 
+        // 往 ChannelPipeline 中添加 一个 ChannelHandler 和一个 ServerBootstrapAcceptor
+        // 实际上是ServerSocketChannel 的 ChannelHandler
+        // ServerBootstrapAcceptor 是一个拦截器
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(final Channel ch) throws Exception {

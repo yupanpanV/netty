@@ -31,6 +31,9 @@ import java.util.Map;
  */
 public abstract class AbstractBootstrapConfig<B extends AbstractBootstrap<B, C>, C extends Channel> {
 
+    /**
+     *  引用的 AbstractBootstrap
+     */
     protected final B bootstrap;
 
     protected AbstractBootstrapConfig(B bootstrap) {
@@ -38,14 +41,14 @@ public abstract class AbstractBootstrapConfig<B extends AbstractBootstrap<B, C>,
     }
 
     /**
-     * Returns the configured local address or {@code null} if non is configured yet.
+     *  本地地址
      */
     public final SocketAddress localAddress() {
         return bootstrap.localAddress();
     }
 
     /**
-     * Returns the configured {@link ChannelFactory} or {@code null} if non is configured yet.
+     *  Channel 工厂
      */
     @SuppressWarnings("deprecation")
     public final ChannelFactory<? extends C> channelFactory() {
@@ -53,7 +56,7 @@ public abstract class AbstractBootstrapConfig<B extends AbstractBootstrap<B, C>,
     }
 
     /**
-     * Returns the configured {@link ChannelHandler} or {@code null} if non is configured yet.
+     *  ServerSocketChannel 的处理器
      */
     public final ChannelHandler handler() {
         return bootstrap.handler();

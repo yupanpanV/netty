@@ -49,12 +49,33 @@ import java.util.Map;
  */
 public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C extends Channel> implements Cloneable {
 
+
+    /**
+     * 事件循环组
+     */
     volatile EventLoopGroup group;
+    /**
+     *  创建 ServerSocketChannel 的工厂
+     */
     @SuppressWarnings("deprecation")
     private volatile ChannelFactory<? extends C> channelFactory;
+
+    /**
+     * 本地地址
+     */
     private volatile SocketAddress localAddress;
+    /**
+     * 可选项集合
+     */
     private final Map<ChannelOption<?>, Object> options = new LinkedHashMap<ChannelOption<?>, Object>();
+    /**
+     * 属性集合
+     */
     private final Map<AttributeKey<?>, Object> attrs = new LinkedHashMap<AttributeKey<?>, Object>();
+
+    /**
+     *  ServerSocketChannel 的ChannelHandler
+     */
     private volatile ChannelHandler handler;
 
     AbstractBootstrap() {
@@ -103,6 +124,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         if (channelClass == null) {
             throw new NullPointerException("channelClass");
         }
+        // 创建一个Channel 工厂
         return channelFactory(new ReflectiveChannelFactory<C>(channelClass));
     }
 
@@ -235,14 +257,16 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
-     * Create a new {@link Channel} and bind it.
+     *  创建ServerSocketChannel 并绑定本地端口
      */
     public ChannelFuture bind() {
+        // 验证当前 Bootstrap
         validate();
         SocketAddress localAddress = this.localAddress;
         if (localAddress == null) {
             throw new IllegalStateException("localAddress not set");
         }
+        // 真正绑定本地端口
         return doBind(localAddress);
     }
 
@@ -278,13 +302,25 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return doBind(localAddress);
     }
 
+    /**
+     * 绑定本地端口
+     */
     private ChannelFuture doBind(final SocketAddress localAddress) {
+        // 创建并初始化 Channel  并注册到EventLoop上
+        // 实际上是创建JDK NIO Channel  并注册到多路复用器上
         final ChannelFuture regFuture = initAndRegister();
+
         final Channel channel = regFuture.channel();
         if (regFuture.cause() != null) {
             return regFuture;
         }
 
+
+        // 注册是异步的  需要使用 Future#isDone  判断注册是否完成
+        // 分为注册完成和未完成两个分支
+        // 1. 注册完成则直接绑定
+        // 2. 注册未完成则创建一个监听器监听注册完成
+        //    监听器收到注册完成事件就绑定
         if (regFuture.isDone()) {
             // At this point we know that the registration was complete and successful.
             ChannelPromise promise = channel.newPromise();
@@ -314,10 +350,16 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         }
     }
 
+    /**
+     *  创建并初始化 Channel  并注册到EventLoop上
+     *  实际上是创建JDK NIO Channel  并注册到多路复用器上
+     */
     final ChannelFuture initAndRegister() {
         Channel channel = null;
         try {
+            // Channel 工厂创建一个channel
             channel = channelFactory.newChannel();
+            // 初始化channel
             init(channel);
         } catch (Throwable t) {
             if (channel != null) {
@@ -330,6 +372,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
 
+        // 把channel 注册到EventLoopGroup 上
+        // 底层把JDK NIO 注册到了多路复用器上
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {
@@ -363,6 +407,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             @Override
             public void run() {
                 if (regFuture.isSuccess()) {
+                    // 真正绑定端口
+                    // 最终是到了AbstractUnsafe#bind() 方法
                     channel.bind(localAddress, promise).addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
                 } else {
                     promise.setFailure(regFuture.cause());
@@ -393,8 +439,9 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
-     * Returns the {@link AbstractBootstrapConfig} object that can be used to obtain the current config
-     * of the bootstrap.
+     * 返回当前AbstractBootstrap 的配置对象
+     *
+     * 这个对象代理着AbstractBootstrap
      */
     public abstract AbstractBootstrapConfig<B, C> config();
 
@@ -438,6 +485,10 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return copiedMap(attrs);
     }
 
+
+    /**
+     *  设置Channel 的可选项
+     */
     static void setChannelOptions(
             Channel channel, Map<ChannelOption<?>, Object> options, InternalLogger logger) {
         for (Map.Entry<ChannelOption<?>, Object> e: options.entrySet()) {

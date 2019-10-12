@@ -85,6 +85,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         this.ch = ch;
         this.readInterestOp = readInterestOp;
         try {
+            // 配置为非阻塞
             ch.configureBlocking(false);
         } catch (IOException e) {
             try {
@@ -381,6 +382,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     @Override
     protected void doRegister() throws Exception {
         boolean selected = false;
+        // 死循环执行  直到把JDK NIO Channel 注册到多路复用器上 跳出循环
+        // 但是没有注册感兴趣的事件
         for (;;) {
             try {
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
@@ -417,6 +420,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
         final int interestOps = selectionKey.interestOps();
         if ((interestOps & readInterestOp) == 0) {
+            // 给channel设置感兴趣的事件 SelectionKey.OP_ACCEPT
+            // 从这里服务器开始处理连接
             selectionKey.interestOps(interestOps | readInterestOp);
         }
     }

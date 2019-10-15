@@ -37,7 +37,9 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
                     return o1.compareTo(o2);
                 }
             };
-
+    /**
+     * 定时任务队列
+     */
     PriorityQueue<ScheduledFutureTask<?>> scheduledTaskQueue;
 
     protected AbstractScheduledEventExecutor() {

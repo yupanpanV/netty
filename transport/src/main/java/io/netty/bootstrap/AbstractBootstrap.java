@@ -374,6 +374,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
 
         // 把channel 注册到EventLoopGroup 上
         // 底层把JDK NIO 注册到了多路复用器上
+        // 最终调用到了AbstractUnsafe#register
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {

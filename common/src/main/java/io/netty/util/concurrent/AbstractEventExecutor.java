@@ -36,7 +36,13 @@ public abstract class AbstractEventExecutor extends AbstractExecutorService impl
     static final long DEFAULT_SHUTDOWN_QUIET_PERIOD = 2;
     static final long DEFAULT_SHUTDOWN_TIMEOUT = 15;
 
+    /**
+     * 所属 EventExecutorGroup
+     */
     private final EventExecutorGroup parent;
+    /**
+     * EventExecutor 数组。只包含自己，用于 {@link #iterator()}
+     */
     private final Collection<EventExecutor> selfCollection = Collections.<EventExecutor>singleton(this);
 
     protected AbstractEventExecutor() {
@@ -52,11 +58,18 @@ public abstract class AbstractEventExecutor extends AbstractExecutorService impl
         return parent;
     }
 
+
+    /**
+     * 返回自己
+     */
     @Override
     public EventExecutor next() {
         return this;
     }
 
+    /**
+     *  当前前线是否跟EventLoop 在同一线程
+     */
     @Override
     public boolean inEventLoop() {
         return inEventLoop(Thread.currentThread());

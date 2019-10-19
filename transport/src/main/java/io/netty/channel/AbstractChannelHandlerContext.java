@@ -754,20 +754,25 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
 
     @Override
     public ChannelFuture write(final Object msg, final ChannelPromise promise) {
+        // 消息( 数据 )为空，抛出异常
         if (msg == null) {
             throw new NullPointerException("msg");
         }
 
         try {
+            // 判断是否为合法的 Promise 对象
             if (isNotValidPromise(promise, true)) {
+                // 释放消息( 数据 )相关的资源
                 ReferenceCountUtil.release(msg);
                 // cancelled
                 return promise;
             }
         } catch (RuntimeException e) {
+            // 发生异常，释放消息( 数据 )相关的资源
             ReferenceCountUtil.release(msg);
             throw e;
         }
+        // 写入消息( 数据 )到内存队列
         write(msg, false, promise);
 
         return promise;
@@ -854,22 +859,30 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
     }
 
     private void write(Object msg, boolean flush, ChannelPromise promise) {
+        // 获得下一个 Outbound 节点
         AbstractChannelHandlerContext next = findContextOutbound();
+        // 记录 Record 记录
         final Object m = pipeline.touch(msg, next);
         EventExecutor executor = next.executor();
+        // 在 EventLoop 的线程中
         if (executor.inEventLoop()) {
+            // 执行 writeAndFlush 事件到下一个节点
             if (flush) {
                 next.invokeWriteAndFlush(m, promise);
+                // 执行 write 事件到下一个节点
             } else {
                 next.invokeWrite(m, promise);
             }
         } else {
             AbstractWriteTask task;
+            // 创建 writeAndFlush 任务
             if (flush) {
                 task = WriteAndFlushTask.newInstance(next, m, promise);
+                // 创建 write 任务
             }  else {
                 task = WriteTask.newInstance(next, m, promise);
             }
+            // 提交到 EventLoop 的线程中，执行该任务
             safeExecute(executor, task, promise, m);
         }
     }
@@ -981,6 +994,7 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
 
     private AbstractChannelHandlerContext findContextInbound() {
         AbstractChannelHandlerContext ctx = this;
+        // 找到下一个inbound
         do {
             ctx = ctx.next;
         } while (!ctx.inbound);
@@ -1087,17 +1101,38 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
 
     abstract static class AbstractWriteTask implements Runnable {
 
+        /**
+         * 提交任务时，是否计算 AbstractWriteTask 对象的自身占用内存大小
+         */
         private static final boolean ESTIMATE_TASK_SIZE_ON_SUBMIT =
                 SystemPropertyUtil.getBoolean("io.netty.transport.estimateSizeOnSubmit", true);
 
         // Assuming a 64-bit JVM, 16 bytes object header, 3 reference fields and one int field, plus alignment
+        /**
+         * 每个 AbstractWriteTask 对象自身占用内存的大小。
+         */
         private static final int WRITE_TASK_OVERHEAD =
                 SystemPropertyUtil.getInt("io.netty.transport.writeTaskSizeOverhead", 48);
 
+        /**
+         * Recycler 处理器。而 Recycler 是 Netty 用来实现对象池的工具类。在网络通信中，写入是非常频繁的操作，因此通过 Recycler 重用 AbstractWriteTask 对象，减少对象的频繁创建，降低 GC 压力，提升性能。
+         */
         private final Recycler.Handle<AbstractWriteTask> handle;
+        /**
+         * pipeline 中的节点
+         */
         private AbstractChannelHandlerContext ctx;
+        /**
+         * 消息( 数据 )
+         */
         private Object msg;
+        /**
+         * Promise 对象
+         */
         private ChannelPromise promise;
+        /**
+         * 对象大小
+         */
         private int size;
 
         @SuppressWarnings("unchecked")
@@ -1110,9 +1145,10 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
             task.ctx = ctx;
             task.msg = msg;
             task.promise = promise;
-
+            // 计算 AbstractWriteTask 对象大小
             if (ESTIMATE_TASK_SIZE_ON_SUBMIT) {
                 task.size = ctx.pipeline.estimatorHandle().size(msg) + WRITE_TASK_OVERHEAD;
+                // 增加 ChannelOutboundBuffer 的 totalPendingSize 属性
                 ctx.pipeline.incrementPendingOutboundBytes(task.size);
             } else {
                 task.size = 0;
@@ -1123,15 +1159,18 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
         public final void run() {
             try {
                 // Check for null as it may be set to null if the channel is closed already
+                // 减少 ChannelOutboundBuffer 的 totalPendingSize 属性
                 if (ESTIMATE_TASK_SIZE_ON_SUBMIT) {
                     ctx.pipeline.decrementPendingOutboundBytes(size);
                 }
+                // 执行 write 事件到下一个节点
                 write(ctx, msg, promise);
             } finally {
                 // Set to null so the GC can collect them directly
                 ctx = null;
                 msg = null;
                 promise = null;
+                // 回收对象
                 handle.recycle(this);
             }
         }

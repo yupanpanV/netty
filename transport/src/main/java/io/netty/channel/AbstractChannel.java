@@ -472,7 +472,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
             AbstractChannel.this.eventLoop = eventLoop;
 
-            // 把JDK NIO ServerSocketChannel 注册到多路复用器上
+            // 把JDK NIO ServerSocketChannel 或者 SocketChannel 注册到多路复用器上
             if (eventLoop.inEventLoop()) {
                 register0(promise);
             } else {
@@ -710,14 +710,18 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
         private void close(final ChannelPromise promise, final Throwable cause,
                            final ClosedChannelException closeCause, final boolean notify) {
+            // 设置 Promise 不可取消
             if (!promise.setUncancellable()) {
                 return;
             }
 
+            // 若关闭已经标记初始化
             if (closeInitiated) {
+                // 关闭已经完成，直接通知 Promise 对象
                 if (closeFuture.isDone()) {
                     // Closed already.
                     safeSetSuccess(promise);
+                    // 关闭未完成，通过监听器通知 Promise 对象
                 } else if (!(promise instanceof VoidChannelPromise)) { // Only needed if no VoidChannelPromise.
                     // This means close() was called before so we just register a listener and return
                     closeFuture.addListener(new ChannelFutureListener() {
@@ -730,46 +734,61 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 标记关闭已经初始化
             closeInitiated = true;
 
+            // 获得 Channel 是否激活
             final boolean wasActive = isActive();
+            // 标记 outboundBuffer 为空
             final ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
             this.outboundBuffer = null; // Disallow adding any messages and flushes to outboundBuffer.
+            // 执行准备关闭
             Executor closeExecutor = prepareToClose();
+            // 若 closeExecutor 非空
             if (closeExecutor != null) {
                 closeExecutor.execute(new Runnable() {
                     @Override
                     public void run() {
                         try {
+                            // 在 closeExecutor 中，执行关闭
                             // Execute the close.
                             doClose0(promise);
                         } finally {
                             // Call invokeLater so closeAndDeregister is executed in the EventLoop again!
+                            // 在 EventLoop 中，执行
                             invokeLater(new Runnable() {
                                 @Override
                                 public void run() {
                                     if (outboundBuffer != null) {
+                                        // 写入数据( 消息 )到对端失败，通知相应数据对应的 Promise 失败。
                                         // Fail all the queued messages
                                         outboundBuffer.failFlushed(cause, notify);
+                                        // 关闭内存队列
                                         outboundBuffer.close(closeCause);
                                     }
+                                    // 执行取消注册，并触发 Channel Inactive 事件到 pipeline 中
                                     fireChannelInactiveAndDeregister(wasActive);
                                 }
                             });
                         }
                     }
                 });
+                // 若 closeExecutor 为空
             } else {
                 try {
+                    // 执行关闭
                     // Close the channel and fail the queued messages in all cases.
                     doClose0(promise);
                 } finally {
                     if (outboundBuffer != null) {
+                        // 写入数据( 消息 )到对端失败，通知相应数据对应的 Promise 失败。
                         // Fail all the queued messages.
                         outboundBuffer.failFlushed(cause, notify);
+                        // 关闭内存队列
                         outboundBuffer.close(closeCause);
                     }
                 }
+                // 正在 flush 中，在 EventLoop 中执行执行取消注册，并触发 Channel Inactive 事件到 pipeline 中
                 if (inFlush0) {
                     invokeLater(new Runnable() {
                         @Override
@@ -777,6 +796,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                             fireChannelInactiveAndDeregister(wasActive);
                         }
                     });
+                    // 不在 flush 中，直接执行执行取消注册，并触发 Channel Inactive 事件到 pipeline 中
                 } else {
                     fireChannelInactiveAndDeregister(wasActive);
                 }
@@ -889,30 +909,40 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             assertEventLoop();
 
             ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
+            // 内存队列为空
             if (outboundBuffer == null) {
                 // If the outboundBuffer is null we know the channel was closed and so
                 // need to fail the future right away. If it is not null the handling of the rest
                 // will be done in flush0()
                 // See https://github.com/netty/netty/issues/2362
+
+
+                // 内存队列为空，一般是 Channel 已经关闭，所以通知 Promise 异常结果
                 safeSetFailure(promise, WRITE_CLOSED_CHANNEL_EXCEPTION);
+
                 // release message now to prevent resource-leak
+                // 释放消息( 对象 )相关的资源
                 ReferenceCountUtil.release(msg);
                 return;
             }
 
             int size;
             try {
+                // 过滤写入的消息( 数据 )
                 msg = filterOutboundMessage(msg);
+                // 计算消息的长度
                 size = pipeline.estimatorHandle().size(msg);
                 if (size < 0) {
                     size = 0;
                 }
             } catch (Throwable t) {
+                // 通知 Promise 异常结果
                 safeSetFailure(promise, t);
+                // 释放消息( 对象 )相关的资源
                 ReferenceCountUtil.release(msg);
                 return;
             }
-
+            // 写入消息( 数据 )到内存队列
             outboundBuffer.addMessage(msg, size, promise);
         }
 

@@ -131,25 +131,38 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         @Override
         public final void read() {
             final ChannelConfig config = config();
+            // 若 inputClosedSeenErrorOnRead = true ，移除对 SelectionKey.OP_READ 事件的感兴趣。
             if (shouldBreakReadReady(config)) {
                 clearReadPending();
                 return;
             }
+
             final ChannelPipeline pipeline = pipeline();
             final ByteBufAllocator allocator = config.getAllocator();
+            // 获得 RecvByteBufAllocator.Handle 对象
             final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
+            // 重置 RecvByteBufAllocator.Handle 对象
             allocHandle.reset(config);
 
             ByteBuf byteBuf = null;
+            // 是否关闭连接
             boolean close = false;
             try {
                 do {
+                    // 申请 ByteBuf 对象
                     byteBuf = allocHandle.allocate(allocator);
+                    // 读取数据
+                    // 设置最后读取字节数
                     allocHandle.lastBytesRead(doReadBytes(byteBuf));
+
+                    // 未读取到数据
                     if (allocHandle.lastBytesRead() <= 0) {
                         // nothing was read. release the buffer.
+                        // 释放 ByteBuf 对象
                         byteBuf.release();
+                        // 置空 ByteBuf 对象 help GC
                         byteBuf = null;
+                        // 如果最后读取的字节为小于 0 ，说明对端已经关闭
                         close = allocHandle.lastBytesRead() < 0;
                         if (close) {
                             // There is nothing left to read as we received an EOF.
@@ -158,15 +171,24 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                         break;
                     }
 
+
+                    // 流程走到这里来 就表示读取到数据
+
+                    // 读取消息数量 + localRead
                     allocHandle.incMessagesRead(1);
                     readPending = false;
+                    // 触发 Channel read 事件到 pipeline 中
                     pipeline.fireChannelRead(byteBuf);
+                    // 置空 ByteBuf 对象
                     byteBuf = null;
                 } while (allocHandle.continueReading());
 
+                // 读取完成
                 allocHandle.readComplete();
+                // 触发 Channel readComplete 事件到 pipeline 中。
                 pipeline.fireChannelReadComplete();
 
+                // 关闭客户端的连接
                 if (close) {
                     closeOnRead(pipeline);
                 }
@@ -266,12 +288,16 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
     @Override
     protected final Object filterOutboundMessage(Object msg) {
+
         if (msg instanceof ByteBuf) {
             ByteBuf buf = (ByteBuf) msg;
+
+            // 直接内存 就直接返回
             if (buf.isDirect()) {
                 return msg;
             }
 
+            // 赋值到直接内存并返回
             return newDirectBuffer(buf);
         }
 

@@ -236,10 +236,25 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
     private static class ServerBootstrapAcceptor extends ChannelInboundHandlerAdapter {
 
+        /**
+         *  子EventLoopGroup
+         */
         private final EventLoopGroup childGroup;
+        /**
+         *  子ChannelHandler
+         */
         private final ChannelHandler childHandler;
+        /**
+         *  子可选属性
+         */
         private final Entry<ChannelOption<?>, Object>[] childOptions;
+        /**
+         *  子额外属性
+         */
         private final Entry<AttributeKey<?>, Object>[] childAttrs;
+        /**
+         * 自动恢复接受客户端连接的任务
+         */
         private final Runnable enableAutoReadTask;
 
         ServerBootstrapAcceptor(
@@ -266,18 +281,27 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         @Override
         @SuppressWarnings("unchecked")
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
+
+            // 接受的客户端的 NioSocketChannel 对象
             final Channel child = (Channel) msg;
 
+            // 把用户代码 的 childHandler 添加到当前Channel(已经接受客户端连接的SocketChannel的包装类) 的pipeline尾部
             child.pipeline().addLast(childHandler);
 
+            // 设置可选属性
             setChannelOptions(child, childOptions, logger);
 
+            // 设置额外属性
             for (Entry<AttributeKey<?>, Object> e: childAttrs) {
                 child.attr((AttributeKey<Object>) e.getKey()).set(e.getValue());
             }
 
             try {
-                childGroup.register(child).addListener(new ChannelFutureListener() {
+                // 给当前Channel(已经接受客户端连接的SocketChannel的包装类) 分配一个EventLoop 并把当前Channel 注册到其上
+                childGroup.register(child)
+
+                        // 添加一个监听器 监听注册是否成功
+                        .addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {
                         if (!future.isSuccess()) {
@@ -286,6 +310,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                     }
                 });
             } catch (Throwable t) {
+                // 强制关闭
                 forceClose(child, t);
             }
         }
@@ -295,17 +320,24 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             logger.warn("Failed to register an accepted channel: {}", child, t);
         }
 
+        /**
+         *  捕获到异常时，暂停 1 秒，不再接受新的客户端连接；而后，再恢复接受新的客户端连接
+         */
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
             final ChannelConfig config = ctx.channel().config();
             if (config.isAutoRead()) {
                 // stop accept new connections for 1 second to allow the channel to recover
                 // See https://github.com/netty/netty/issues/1328
+                // 暂停接受客户端的连接
                 config.setAutoRead(false);
+                // 1秒后恢复接受客户端的连接
                 ctx.channel().eventLoop().schedule(enableAutoReadTask, 1, TimeUnit.SECONDS);
             }
             // still let the exceptionCaught event flow through the pipeline to give the user
             // a chance to do something with it
+
+            // 继续传播 exceptionCaught 给下一个节点
             ctx.fireExceptionCaught(cause);
         }
     }

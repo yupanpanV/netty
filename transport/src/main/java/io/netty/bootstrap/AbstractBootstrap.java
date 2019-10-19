@@ -528,7 +528,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     static final class PendingRegistrationPromise extends DefaultChannelPromise {
 
         // Is set to the correct EventExecutor once the registration was successful. Otherwise it will
-        // stay null and so the GlobalEventExecutor.INSTANCE will be used for notifications.
+        // stay null and so the GlobalEvAbstractChannelentExecutor.INSTANCE will be used for notifications.
         private volatile boolean registered;
 
         PendingRegistrationPromise(Channel channel) {

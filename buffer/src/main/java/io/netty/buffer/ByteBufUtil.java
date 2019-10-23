@@ -62,6 +62,9 @@ public final class ByteBufUtil {
 
     private static final byte WRITE_UTF_UNKNOWN = (byte) '?';
     private static final int MAX_CHAR_BUFFER_SIZE;
+    /**
+     * 默认为0
+     */
     private static final int THREAD_LOCAL_BUFFER_SIZE;
     private static final int MAX_BYTES_PER_CHAR_UTF8 =
             (int) CharsetUtil.encoder(CharsetUtil.UTF_8).maxBytesPerChar();
@@ -70,6 +73,7 @@ public final class ByteBufUtil {
     static final ByteBufAllocator DEFAULT_ALLOCATOR;
 
     static {
+        // Android 默认为 unpooled  其他默认为 pooled
         String allocType = SystemPropertyUtil.get(
                 "io.netty.allocator.type", PlatformDependent.isAndroid() ? "unpooled" : "pooled");
         allocType = allocType.toLowerCase(Locale.US).trim();
@@ -82,6 +86,7 @@ public final class ByteBufUtil {
             alloc = PooledByteBufAllocator.DEFAULT;
             logger.debug("-Dio.netty.allocator.type: {}", allocType);
         } else {
+            // 用户写错了就用这个
             alloc = PooledByteBufAllocator.DEFAULT;
             logger.debug("-Dio.netty.allocator.type: pooled (unknown: {})", allocType);
         }
@@ -804,6 +809,7 @@ public final class ByteBufUtil {
      * @return a cached thread-local direct buffer, if available.  {@code null} otherwise.
      */
     public static ByteBuf threadLocalDirectBuffer() {
+        // 默认不开启 ThreadLocal ByteBuf 的功能
         if (THREAD_LOCAL_BUFFER_SIZE <= 0) {
             return null;
         }
@@ -1132,7 +1138,9 @@ public final class ByteBufUtil {
     }
 
     static final class ThreadLocalUnsafeDirectByteBuf extends UnpooledUnsafeDirectByteBuf {
-
+        /**
+         * Recycler 对象
+         */
         private static final Recycler<ThreadLocalUnsafeDirectByteBuf> RECYCLER =
                 new Recycler<ThreadLocalUnsafeDirectByteBuf>() {
                     @Override
@@ -1141,8 +1149,14 @@ public final class ByteBufUtil {
                     }
                 };
 
+
+        /**
+         *  静态方法返回一个实例
+         */
         static ThreadLocalUnsafeDirectByteBuf newInstance() {
+            // 从 RECYCLER 中去获取有一个实例
             ThreadLocalUnsafeDirectByteBuf buf = RECYCLER.get();
+            // 实例的引用计数设置为1
             buf.setRefCnt(1);
             return buf;
         }
@@ -1156,10 +1170,14 @@ public final class ByteBufUtil {
 
         @Override
         protected void deallocate() {
+            // THREAD_LOCAL_BUFFER_SIZE 默认为零
             if (capacity() > THREAD_LOCAL_BUFFER_SIZE) {
+                // 释放
                 super.deallocate();
             } else {
+                // 重置读写索引
                 clear();
+                // 回收
                 handle.recycle(this);
             }
         }
@@ -1167,6 +1185,9 @@ public final class ByteBufUtil {
 
     static final class ThreadLocalDirectByteBuf extends UnpooledDirectByteBuf {
 
+        /**
+         * Recycler 对象
+         */
         private static final Recycler<ThreadLocalDirectByteBuf> RECYCLER = new Recycler<ThreadLocalDirectByteBuf>() {
             @Override
             protected ThreadLocalDirectByteBuf newObject(Handle<ThreadLocalDirectByteBuf> handle) {
@@ -1180,6 +1201,9 @@ public final class ByteBufUtil {
             return buf;
         }
 
+        /**
+         * Recycler 处理器
+         */
         private final Handle<ThreadLocalDirectByteBuf> handle;
 
         private ThreadLocalDirectByteBuf(Handle<ThreadLocalDirectByteBuf> handle) {
@@ -1190,9 +1214,12 @@ public final class ByteBufUtil {
         @Override
         protected void deallocate() {
             if (capacity() > THREAD_LOCAL_BUFFER_SIZE) {
+                // 释放
                 super.deallocate();
             } else {
+                // 重置读写索引
                 clear();
+                // 回收对象
                 handle.recycle(this);
             }
         }

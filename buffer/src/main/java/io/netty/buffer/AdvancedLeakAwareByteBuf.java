@@ -35,6 +35,9 @@ import java.nio.charset.Charset;
 
 final class AdvancedLeakAwareByteBuf extends SimpleLeakAwareByteBuf {
 
+    /**
+     * 默认为false
+     */
     private static final String PROP_ACQUIRE_AND_RELEASE_ONLY = "io.netty.leakDetection.acquireAndReleaseOnly";
     private static final boolean ACQUIRE_AND_RELEASE_ONLY;
 
@@ -60,6 +63,7 @@ final class AdvancedLeakAwareByteBuf extends SimpleLeakAwareByteBuf {
     }
 
     static void recordLeakNonRefCountingOperation(ResourceLeakTracker<ByteBuf> leak) {
+        // 默认记录
         if (!ACQUIRE_AND_RELEASE_ONLY) {
             leak.record();
         }

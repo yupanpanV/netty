@@ -39,13 +39,18 @@ import static io.netty.util.internal.StringUtil.simpleClassName;
 
 public class ResourceLeakDetector<T> {
 
+    /**
+     * 默认内存检测级别
+     */
     private static final String PROP_LEVEL_OLD = "io.netty.leakDetectionLevel";
     private static final String PROP_LEVEL = "io.netty.leakDetection.level";
     private static final Level DEFAULT_LEVEL = Level.SIMPLE;
 
+    /**
+     * 每个 DefaultResourceLeak 记录的 Record 数量
+     */
     private static final String PROP_TARGET_RECORDS = "io.netty.leakDetection.targetRecords";
     private static final int DEFAULT_TARGET_RECORDS = 4;
-
     private static final int TARGET_RECORDS;
 
     /**
@@ -124,6 +129,9 @@ public class ResourceLeakDetector<T> {
     }
 
     // There is a minor performance benefit in TLR if this is a power of 2.
+    /**
+     * 默认采集频率
+     */
     static final int DEFAULT_SAMPLING_INTERVAL = 128;
 
     /**
@@ -158,13 +166,30 @@ public class ResourceLeakDetector<T> {
         return level;
     }
 
-    /** the collection of active resources */
+    /**
+     * DefaultResourceLeak 集合
+     *
+     * 跟 DefaultResourceLeak 的 allLeaks 同一个对象
+     * {@link DefaultResourceLeak.allLeaks}
+     *
+     * the collection of active resources
+     */
     private final ConcurrentMap<DefaultResourceLeak<?>, LeakEntry> allLeaks = PlatformDependent.newConcurrentHashMap();
-
+    /**
+     * 引用队列
+     */
     private final ReferenceQueue<Object> refQueue = new ReferenceQueue<Object>();
+    /**
+     * 已汇报的内存泄露的资源类型的集合
+     */
     private final ConcurrentMap<String, Boolean> reportedLeaks = PlatformDependent.newConcurrentHashMap();
-
+    /**
+     * 资源类型
+     */
     private final String resourceType;
+    /**
+     * 采集评率
+     */
     private final int samplingInterval;
 
     /**
@@ -239,6 +264,8 @@ public class ResourceLeakDetector<T> {
      * {@link ResourceLeakTracker#close(Object)} when the related resource is deallocated.
      *
      * @return the {@link ResourceLeakTracker} or {@code null}
+     *
+     * 创建一个能够检测 obj 是否存在内存泄漏的 ResourceLeakTracker
      */
     @SuppressWarnings("unchecked")
     public final ResourceLeakTracker<T> track(T obj) {
@@ -252,13 +279,20 @@ public class ResourceLeakDetector<T> {
             return null;
         }
 
+        // SIMPLE 和 ADVANCED
         if (level.ordinal() < Level.PARANOID.ordinal()) {
+            // 随机
             if ((PlatformDependent.threadLocalRandom().nextInt(samplingInterval)) == 0) {
+                // 汇报内存是否泄漏
                 reportLeak();
+                // 创建 DefaultResourceLeak 对象
                 return new DefaultResourceLeak(obj, refQueue, allLeaks);
             }
             return null;
         }
+
+        // PARANOID 级别
+        // 汇报内存是否泄漏
         reportLeak();
         return new DefaultResourceLeak(obj, refQueue, allLeaks);
     }
@@ -270,16 +304,20 @@ public class ResourceLeakDetector<T> {
             if (ref == null) {
                 break;
             }
+            // 清理，并返回是否内存泄露
             ref.dispose();
         }
     }
 
     private void reportLeak() {
+        // 如果不允许打印错误日志，则无法汇报，清理队列，并直接结束。
         if (!logger.isErrorEnabled()) {
             clearRefQueue();
             return;
         }
 
+        // 从引用队列里面 检测是否存在内存泄漏
+        // 如果有泄漏就报告出来
         // Detect and report previous leaks.
         for (;;) {
             @SuppressWarnings("unchecked")
@@ -288,11 +326,17 @@ public class ResourceLeakDetector<T> {
                 break;
             }
 
+            // 清理，并返回是否内存泄露
             if (!ref.dispose()) {
+                // 没有泄漏 继续下一个
                 continue;
             }
 
+            // 走到这里 说明发生了内存泄漏
+
+            // 获得 Record 日志
             String records = ref.toString();
+            // 相同 Record 日志，只汇报一次
             if (reportedLeaks.putIfAbsent(records, Boolean.TRUE) == null) {
                 if (records.isEmpty()) {
                     reportUntracedLeak(resourceType);
@@ -348,12 +392,29 @@ public class ResourceLeakDetector<T> {
                 (AtomicIntegerFieldUpdater)
                         AtomicIntegerFieldUpdater.newUpdater(DefaultResourceLeak.class, "droppedRecords");
 
+        /**
+         * Record 链表的头节点
+         */
         @SuppressWarnings("unused")
         private volatile Record head;
+        /**
+         * 丢弃的 Record 计数
+         */
         @SuppressWarnings("unused")
         private volatile int droppedRecords;
 
+        /**
+         * DefaultResourceLeak 集合
+         * 跟 ResourceLeakDetector.allLeaks 是同一个对象
+         * {@link ResourceLeakDetector.allLeaks}
+         */
         private final ConcurrentMap<DefaultResourceLeak<?>, LeakEntry> allLeaks;
+        /**
+         * hash
+         *
+         * 保证 {@link #close(Object)} 传入的对象，就是构造方法的 referent 参数
+         * {@link java.lang.ref.Reference#referent} 对象
+         */
         private final int trackedHash;
 
         DefaultResourceLeak(
@@ -367,7 +428,9 @@ public class ResourceLeakDetector<T> {
             // Store the hash of the tracked object to later assert it in the close(...) method.
             // It's important that we not store a reference to the referent as this would disallow it from
             // be collected via the WeakReference.
+            // 取得hash值
             trackedHash = System.identityHashCode(referent);
+            // 把自己放进allLeaks集合
             allLeaks.put(this, LeakEntry.INSTANCE);
             // Create a new Record so we always have the creation stacktrace included.
             headUpdater.set(this, new Record(Record.BOTTOM));
@@ -418,38 +481,58 @@ public class ResourceLeakDetector<T> {
                 Record newHead;
                 boolean dropped;
                 do {
+                    // 已经关闭，则返回
                     if ((prevHead = oldHead = headUpdater.get(this)) == null) {
                         // already closed.
                         return;
                     }
+                    // 当超过 TARGET_RECORDS 数量时，随机丢到头节点。
                     final int numElements = oldHead.pos + 1;
                     if (numElements >= TARGET_RECORDS) {
                         final int backOffFactor = Math.min(numElements - TARGET_RECORDS, 30);
+                        // 1 - (1 / 2^n）
                         if (dropped = PlatformDependent.threadLocalRandom().nextInt(1 << backOffFactor) != 0) {
+                            // 删除头节点  保存最老的节点
                             prevHead = oldHead.next;
                         }
                     } else {
+                        // 小于 TARGET_RECORDS
+                        // 标记一下 没有丢弃节点
                         dropped = false;
                     }
+                    // 创建新的头节点
                     newHead = hint != null ? new Record(prevHead, hint) : new Record(prevHead);
                 } while (!headUpdater.compareAndSet(this, oldHead, newHead));
+
+                // 若丢弃，增加 droppedRecordsUpdater 计数
                 if (dropped) {
                     droppedRecordsUpdater.incrementAndGet(this);
                 }
             }
         }
 
+        /**
+         * 清理，并返回是否内存泄露
+         */
         boolean dispose() {
+            // 清理 referent 的引用
             clear();
+            // 移除出 allLeaks 。移除成功，意味着内存泄露。
             return allLeaks.remove(this, LeakEntry.INSTANCE);
         }
 
+        /**
+         *  关闭目标对象的跟踪
+         */
         @Override
         public boolean close() {
             // Use the ConcurrentMap remove method, which avoids allocating an iterator.
+            // 把自己从 allLeaks 集合移除
             if (allLeaks.remove(this, LeakEntry.INSTANCE)) {
                 // Call clear so the reference is not even enqueued.
+                // 清理 referent 的引用
                 clear();
+                // 把自己的 head 置为null
                 headUpdater.set(this, null);
                 return true;
             }
@@ -470,20 +553,27 @@ public class ResourceLeakDetector<T> {
 
         @Override
         public String toString() {
+            // 把head属性置空
             Record oldHead = headUpdater.getAndSet(this, null);
+
+            // 若为空，说明已经关闭。
             if (oldHead == null) {
                 // Already closed
                 return EMPTY_STRING;
             }
 
+            // 已经丢弃记录的数量
             final int dropped = droppedRecordsUpdater.get(this);
             int duped = 0;
 
+            // 链表中有个 Record.BOTTOM 尾节点
+            // 所以 一共有 oldHead.pos + 1
             int present = oldHead.pos + 1;
             // Guess about 2 kilobytes per stack trace
             StringBuilder buf = new StringBuilder(present * 2048).append(NEWLINE);
             buf.append("Recent access records: ").append(NEWLINE);
 
+            // 拼接 Record 链
             int i = 1;
             Set<String> seen = new HashSet<String>(present);
             for (; oldHead != Record.BOTTOM; oldHead = oldHead.next) {
@@ -499,6 +589,7 @@ public class ResourceLeakDetector<T> {
                 }
             }
 
+            // 拼接 duped ( 重复 ) 次数
             if (duped > 0) {
                 buf.append(": ")
                         .append(dropped)
@@ -506,6 +597,7 @@ public class ResourceLeakDetector<T> {
                         .append(NEWLINE);
             }
 
+            // 拼接 dropped (丢弃) 次数
             if (dropped > 0) {
                 buf.append(": ")
                    .append(dropped)
@@ -521,28 +613,37 @@ public class ResourceLeakDetector<T> {
             return buf.toString();
         }
     }
-
+    /**
+     * 忽略的方法集合
+     */
     private static final AtomicReference<String[]> excludedMethods =
             new AtomicReference<String[]>(EmptyArrays.EMPTY_STRINGS);
 
     public static void addExclusions(Class clz, String ... methodNames) {
+        // 去重
         Set<String> nameSet = new HashSet<String>(Arrays.asList(methodNames));
         // Use loop rather than lookup. This avoids knowing the parameters, and doesn't have to handle
         // NoSuchMethodException.
+
+        // 在nameSet集合里排除 clz 这个类的方法  直到 nameset 变成空集合
         for (Method method : clz.getDeclaredMethods()) {
             if (nameSet.remove(method.getName()) && nameSet.isEmpty()) {
                 break;
             }
         }
+
+        //  上面的其实就是判断传入的方法名必须要是这个类的方法   做一个校验而已
         if (!nameSet.isEmpty()) {
             throw new IllegalArgumentException("Can't find '" + nameSet + "' in " + clz.getName());
         }
+
         String[] oldMethods;
         String[] newMethods;
         do {
             oldMethods = excludedMethods.get();
             newMethods = Arrays.copyOf(oldMethods, oldMethods.length + 2 * methodNames.length);
             for (int i = 0; i < methodNames.length; i++) {
+                //  数组元素格式： [className,methodName,className,methodName]
                 newMethods[oldMethods.length + i * 2] = clz.getName();
                 newMethods[oldMethods.length + i * 2 + 1] = methodNames[i];
             }

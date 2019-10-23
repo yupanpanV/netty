@@ -34,11 +34,28 @@ import java.nio.channels.ScatteringByteChannel;
  */
 public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
 
+    /**
+     * ByteBuf 分配器对象
+     */
     private final ByteBufAllocator alloc;
 
+    /**
+     * 数据 ByteBuffer 对象
+     */
     private ByteBuffer buffer;
+    /**
+     * 临时 ByteBuffer 对象
+     */
     private ByteBuffer tmpNioBuf;
+    /**
+     * 容量
+     */
     private int capacity;
+    /**
+     * 是否需要释放
+     *
+     * 如果 {@link #buffer} 从外部传入，则需要进行释放，即 {@link #UnpooledDirectByteBuf(ByteBufAllocator, ByteBuffer, int)} 构造方法。
+     */
     private boolean doNotFree;
 
     /**
@@ -48,7 +65,9 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
      * @param maxCapacity     the maximum capacity of the underlying direct buffer
      */
     public UnpooledDirectByteBuf(ByteBufAllocator alloc, int initialCapacity, int maxCapacity) {
+        // 设置最大容量
         super(maxCapacity);
+
         if (alloc == null) {
             throw new NullPointerException("alloc");
         }
@@ -64,6 +83,8 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
         }
 
         this.alloc = alloc;
+        // 创建 Direct ByteBuffer 对象
+        // 设置数据 ByteBuffer 对象
         setByteBuffer(ByteBuffer.allocateDirect(initialCapacity));
     }
 
@@ -94,8 +115,15 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
         }
 
         this.alloc = alloc;
+
+        // 标记为 true 。因为 initialBuffer 是从外部传递进来，释放的工作，不交给当前 UnpooledDirectByteBuf 对象。
+        // slice 切片
         doNotFree = true;
+
+
+        // 设置数据 ByteBuffer 对象
         setByteBuffer(initialBuffer.slice().order(ByteOrder.BIG_ENDIAN));
+        // 设置写索引
         writerIndex(initialCapacity);
     }
 
@@ -140,34 +168,48 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
 
     @Override
     public ByteBuf capacity(int newCapacity) {
+        // 校验新的容量，不能超过最大容量
         checkNewCapacity(newCapacity);
 
         int readerIndex = readerIndex();
         int writerIndex = writerIndex();
 
         int oldCapacity = capacity;
+        // 扩容
         if (newCapacity > oldCapacity) {
             ByteBuffer oldBuffer = buffer;
+            // 创建新的 Direct ByteBuffer 对象
             ByteBuffer newBuffer = allocateDirect(newCapacity);
+            // 复制数据到新的 buffer 对象
             oldBuffer.position(0).limit(oldBuffer.capacity());
             newBuffer.position(0).limit(oldBuffer.capacity());
             newBuffer.put(oldBuffer);
+            // 因为读取和写入，使用 readerIndex 和 writerIndex ，所以没关系  可是使用bytebuffer 的clear方法
             newBuffer.clear();
             setByteBuffer(newBuffer);
+
+            // 缩容
         } else if (newCapacity < oldCapacity) {
             ByteBuffer oldBuffer = buffer;
+            // 创建新的 Direct ByteBuffer 对象
             ByteBuffer newBuffer = allocateDirect(newCapacity);
             if (readerIndex < newCapacity) {
                 if (writerIndex > newCapacity) {
+                    // 如果写索引超过新容量，需要重置下，设置为最大容量。否则就越界了。
                     writerIndex(writerIndex = newCapacity);
                 }
+                // 复制数据到新的 buffer 对象
                 oldBuffer.position(readerIndex).limit(writerIndex);
                 newBuffer.position(readerIndex).limit(writerIndex);
                 newBuffer.put(oldBuffer);
                 newBuffer.clear();
             } else {
+                // 因为读索引超过新容量，所以写索引超过新容量
+                // 如果读写索引都超过新容量，需要重置下，都设置为最大容量。否则就越界了。
                 setIndex(newCapacity, newCapacity);
+                // 这里要注意下，老的数据，相当于不进行复制，因为已经读取完了。
             }
+            // 设置新的 buffer 对象，并根据条件释放老的 buffer 对象
             setByteBuffer(newBuffer);
         }
         return this;
@@ -647,8 +689,10 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
             return;
         }
 
+        // 置空 buffer 属性
         this.buffer = null;
 
+        // 释放 buffer 对象
         if (!doNotFree) {
             freeDirect(buffer);
         }

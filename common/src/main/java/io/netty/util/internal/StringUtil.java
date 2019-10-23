@@ -281,6 +281,7 @@ public final class StringUtil {
      * with anonymous classes.
      */
     public static String simpleClassName(Class<?> clazz) {
+        // 取类名  （不包含全路径）
         String className = checkNotNull(clazz, "clazz").getName();
         final int lastDotIdx = className.lastIndexOf(PACKAGE_SEPARATOR_CHAR);
         if (lastDotIdx > -1) {

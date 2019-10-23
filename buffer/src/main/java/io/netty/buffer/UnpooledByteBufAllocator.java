@@ -27,11 +27,19 @@ import java.nio.ByteBuffer;
 public final class UnpooledByteBufAllocator extends AbstractByteBufAllocator implements ByteBufAllocatorMetricProvider {
 
     private final UnpooledByteBufAllocatorMetric metric = new UnpooledByteBufAllocatorMetric();
+    /**
+     *  是否禁用内存泄漏检测
+     */
     private final boolean disableLeakDetector;
+    /**
+     *  是否需要清洁器
+     */
     private final boolean noCleaner;
 
     /**
      * Default instance which uses leak-detection for direct buffers.
+     *
+     * 用来检测 direct buffers 的默认实例
      */
     public static final UnpooledByteBufAllocator DEFAULT =
             new UnpooledByteBufAllocator(PlatformDependent.directBufferPreferred());
@@ -43,6 +51,7 @@ public final class UnpooledByteBufAllocator extends AbstractByteBufAllocator imp
      *                     a heap buffer
      */
     public UnpooledByteBufAllocator(boolean preferDirect) {
+        // 默认开启内存泄漏检测
         this(preferDirect, false);
     }
 

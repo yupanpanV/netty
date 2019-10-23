@@ -44,6 +44,9 @@ import static io.netty.util.internal.MathUtil.isOutOfBounds;
 public abstract class AbstractByteBuf extends ByteBuf {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractByteBuf.class);
     private static final String PROP_MODE = "io.netty.buffer.bytebuf.checkAccessible";
+    /**
+     *  默认为true
+     */
     private static final boolean checkAccessible;
 
     static {
@@ -53,13 +56,31 @@ public abstract class AbstractByteBuf extends ByteBuf {
         }
     }
 
+    /**
+     * 内存泄漏检测器
+     */
     static final ResourceLeakDetector<ByteBuf> leakDetector =
             ResourceLeakDetectorFactory.instance().newResourceLeakDetector(ByteBuf.class);
 
+    /**
+     * 读取位置
+     */
     int readerIndex;
+    /**
+     * 写入位置
+     */
     int writerIndex;
+    /**
+     * {@link #readerIndex} 的标记
+     */
     private int markedReaderIndex;
+    /**
+     * {@link #writerIndex} 的标记
+     */
     private int markedWriterIndex;
+    /**
+     * 最大容量
+     */
     private int maxCapacity;
 
     protected AbstractByteBuf(int maxCapacity) {
@@ -268,10 +289,13 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     final void ensureWritable0(int minWritableBytes) {
         ensureAccessible();
+
+        // 可写空间足够 直接返回
         if (minWritableBytes <= writableBytes()) {
             return;
         }
 
+        // 超出 maxCapacity 抛异常
         if (minWritableBytes > maxCapacity - writerIndex) {
             throw new IndexOutOfBoundsException(String.format(
                     "writerIndex(%d) + minWritableBytes(%d) exceeds maxCapacity(%d): %s",
@@ -279,9 +303,13 @@ public abstract class AbstractByteBuf extends ByteBuf {
         }
 
         // Normalize the current capacity to the power of 2.
+        // 计算新的容量。默认情况下，2 倍扩容，并且不超过最大容量上限。
+        // 此处仅仅是计算，并没有扩容内存复制等等操作
+        // 一般情况下仅仅是 当前 capacity * 2
         int newCapacity = alloc().calculateNewCapacity(writerIndex + minWritableBytes, maxCapacity);
 
         // Adjust to the new capacity.
+        // 设置新的容量大小
         capacity(newCapacity);
     }
 
@@ -293,22 +321,35 @@ public abstract class AbstractByteBuf extends ByteBuf {
                     "minWritableBytes: %d (expected: >= 0)", minWritableBytes));
         }
 
+        // 本方法总结返回值
+        //              0：  不需要扩容
+        //              1：  想要的容量已经超过了最大容量 force 为false 什么也不做
+        //              2：  想要的容量已经超过了最大容量 force true 扩容两倍
+        //              3：  扩容至最大容量
+
+
+        // 可写空间足够 返回0
         if (minWritableBytes <= writableBytes()) {
             return 0;
         }
 
         final int maxCapacity = maxCapacity();
         final int writerIndex = writerIndex();
+        // 超过 maxCapacity
         if (minWritableBytes > maxCapacity - writerIndex) {
+            // force 为 false 或者当前Capacity 已经是最大 Capacity  返回1
             if (!force || capacity() == maxCapacity) {
                 return 1;
             }
-
+            // force 为 true  或者当前Capacity 已经还不是最大 Capacity
+            // 设置最大Capacity
             capacity(maxCapacity);
+            // 返回3
             return 3;
         }
 
         // Normalize the current capacity to the power of 2.
+        // 正常情况下 扩容两倍
         int newCapacity = alloc().calculateNewCapacity(writerIndex + minWritableBytes, maxCapacity);
 
         // Adjust to the new capacity.
@@ -321,9 +362,12 @@ public abstract class AbstractByteBuf extends ByteBuf {
         if (endianness == null) {
             throw new NullPointerException("endianness");
         }
+
+        // 未改变，直接返回
         if (endianness == order()) {
             return this;
         }
+        // 创建 SwappedByteBuf 对象
         return newSwappedByteBuf();
     }
 

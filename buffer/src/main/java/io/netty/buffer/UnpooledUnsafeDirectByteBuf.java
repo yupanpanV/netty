@@ -34,12 +34,29 @@ import java.nio.channels.ScatteringByteChannel;
  */
 public class UnpooledUnsafeDirectByteBuf extends AbstractReferenceCountedByteBuf {
 
+    /**
+     * ByteBuf 分配器对象
+     */
     private final ByteBufAllocator alloc;
-
+    /**
+     * 临时 ByteBuffer 对象
+     */
     private ByteBuffer tmpNioBuf;
+    /**
+     * 容量
+     */
     private int capacity;
+    /**
+     * 是否需要释放
+     */
     private boolean doNotFree;
+    /**
+     * 数据 ByteBuffer 对象
+     */
     ByteBuffer buffer;
+    /**
+     * 内存地址
+     */
     long memoryAddress;
 
     /**

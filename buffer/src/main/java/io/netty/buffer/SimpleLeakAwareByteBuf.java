@@ -20,6 +20,7 @@ import io.netty.util.ResourceLeakDetector;
 import io.netty.util.ResourceLeakTracker;
 import io.netty.util.internal.ObjectUtil;
 
+import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 class SimpleLeakAwareByteBuf extends WrappedByteBuf {
@@ -28,8 +29,14 @@ class SimpleLeakAwareByteBuf extends WrappedByteBuf {
      * This object's is associated with the {@link ResourceLeakTracker}. When {@link ResourceLeakTracker#close(Object)}
      * is called this object will be used as the argument. It is also assumed that this object is used when
      * {@link ResourceLeakDetector#track(Object)} is called to create {@link #leak}.
+     *
+     * 关联的 ByteBuf 对象
      */
     private final ByteBuf trackedByteBuf;
+    /**
+     * ResourceLeakTracker 对象
+     * 他的实现类就是一个弱引用
+     */
     final ResourceLeakTracker<ByteBuf> leak;
 
     SimpleLeakAwareByteBuf(ByteBuf wrapped, ByteBuf trackedByteBuf, ResourceLeakTracker<ByteBuf> leak) {

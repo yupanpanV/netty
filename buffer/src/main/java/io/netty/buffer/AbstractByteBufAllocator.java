@@ -25,7 +25,13 @@ import io.netty.util.internal.StringUtil;
  * Skeletal {@link ByteBufAllocator} implementation to extend.
  */
 public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
+    /**
+     *  创建一个buffer时的初始默认容量
+     */
     static final int DEFAULT_INITIAL_CAPACITY = 256;
+    /**
+     *  创建一个buffer时的最大默认容量
+     */
     static final int DEFAULT_MAX_CAPACITY = Integer.MAX_VALUE;
     static final int DEFAULT_MAX_COMPONENTS = 16;
     static final int CALCULATE_THRESHOLD = 1048576 * 4; // 4 MiB page
@@ -77,8 +83,13 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
         }
         return buf;
     }
-
+    /**
+     * 是否倾向创建 Direct ByteBuf
+     */
     private final boolean directByDefault;
+    /**
+     * 空 ByteBuf 缓存
+     */
     private final ByteBuf emptyBuf;
 
     /**
@@ -101,9 +112,12 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
 
     @Override
     public ByteBuf buffer() {
+
+        // directBuffer
         if (directByDefault) {
             return directBuffer();
         }
+        // heapBuffer
         return heapBuffer();
     }
 
@@ -181,7 +195,10 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
         if (initialCapacity == 0 && maxCapacity == 0) {
             return emptyBuf;
         }
+        // 校验是否合法
         validate(initialCapacity, maxCapacity);
+
+        // 交给子类去处理    池化 or 非池化
         return newDirectBuffer(initialCapacity, maxCapacity);
     }
 

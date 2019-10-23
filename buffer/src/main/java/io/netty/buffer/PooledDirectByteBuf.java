@@ -37,7 +37,9 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
     };
 
     static PooledDirectByteBuf newInstance(int maxCapacity) {
+        // 从 Recycler 的对象池中获得 PooledDirectByteBuf 对象
         PooledDirectByteBuf buf = RECYCLER.get();
+        // 重置 PooledDirectByteBuf 的属性
         buf.reuse(maxCapacity);
         return buf;
     }
@@ -388,14 +390,23 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
         }
     }
 
+    /**
+     * 复制指定范围的数据到新创建的 Direct ByteBuf 对象
+     */
     @Override
     public ByteBuf copy(int index, int length) {
+        // 校验索引
         checkIndex(index, length);
+        // 创建一个 Direct ByteBuf 对象
         ByteBuf copy = alloc().directBuffer(length, maxCapacity());
+        // 写入数据
         copy.writeBytes(this, index, length);
         return copy;
     }
 
+    /**
+     * 返回 ByteBuf 包含 ByteBuffer 数量为 1
+     */
     @Override
     public int nioBufferCount() {
         return 1;
@@ -403,16 +414,27 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
 
     @Override
     public ByteBuffer nioBuffer(int index, int length) {
+        // 校验索引
         checkIndex(index, length);
+        // memory 中的开始位置
         index = idx(index);
+        // duplicate 复制一个 ByteBuffer 对象，共享数据
+        // position + limit 设置位置和大小限制
+        // slice 创建 [position, limit] 子缓冲区，共享数据
         return ((ByteBuffer) memory.duplicate().position(index).limit(index + length)).slice();
     }
 
+    /**
+     * 返回 ByteBuf 指定范围内包含的 ByteBuffer 数组( 共享 )
+     */
     @Override
     public ByteBuffer[] nioBuffers(int index, int length) {
         return new ByteBuffer[] { nioBuffer(index, length) };
     }
 
+    /**
+     * 返回 ByteBuf 指定范围内的 ByteBuffer 对象( 共享 )
+     */
     @Override
     public ByteBuffer internalNioBuffer(int index, int length) {
         checkIndex(index, length);

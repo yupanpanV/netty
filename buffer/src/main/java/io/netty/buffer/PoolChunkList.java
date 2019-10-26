@@ -27,13 +27,36 @@ import static java.lang.Math.*;
 
 final class PoolChunkList<T> implements PoolChunkListMetric {
     private static final Iterator<PoolChunkMetric> EMPTY_METRICS = Collections.<PoolChunkMetric>emptyList().iterator();
+    /**
+     * 所属 PoolArena 对象
+     */
     private final PoolArena<T> arena;
+    /**
+     * 下一个 PoolChunkList 对象
+     */
     private final PoolChunkList<T> nextList;
+    /**
+     * Chunk 最小内存使用率
+     */
     private final int minUsage;
+    /**
+     * Chunk 最大内存使用率
+     */
     private final int maxUsage;
+    /**
+     * 每个 Chunk 最大可分配的容量
+     *
+     * @see #calculateMaxCapacity(int, int) 方法
+     */
     private final int maxCapacity;
+    /**
+     * PoolChunk 头节点
+     */
     private PoolChunk<T> head;
 
+    /**
+     * 前一个 PoolChunkList 对象
+     */
     // This is only update once when create the linked like list of PoolChunkList in PoolArena constructor.
     private PoolChunkList<T> prevList;
 
@@ -46,6 +69,8 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
         this.nextList = nextList;
         this.minUsage = minUsage;
         this.maxUsage = maxUsage;
+
+        // 计算 maxUsage 属性
         maxCapacity = calculateMaxCapacity(minUsage, chunkSize);
     }
 
@@ -75,23 +100,35 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
     }
 
     boolean allocate(PooledByteBuf<T> buf, int reqCapacity, int normCapacity) {
+        // 双向链表中无 Chunk
+        // 申请分配的内存超过 ChunkList 的每个 Chunk 最大可分配的容量
         if (head == null || normCapacity > maxCapacity) {
             // Either this PoolChunkList is empty or the requested capacity is larger then the capacity which can
             // be handled by the PoolChunks that are contained in this PoolChunkList.
             return false;
         }
 
+        // 遍历 PoolChunk
         for (PoolChunk<T> cur = head;;) {
+            // 尝试分配内存块
             long handle = cur.allocate(normCapacity);
+            // 分配失败
             if (handle < 0) {
+                // 进入下一节点
                 cur = cur.next;
+                // 若下一个节点不存在，返回 false ，结束循环
                 if (cur == null) {
                     return false;
                 }
+                // 分配成功
             } else {
+                // 初始化内存块到 PooledByteBuf 对象中
                 cur.initBuf(buf, handle, reqCapacity);
+                // 超过当前 ChunkList 管理的 Chunk 的内存使用率上限
                 if (cur.usage() >= maxUsage) {
+                    // 从当前 ChunkList 节点移除
                     remove(cur);
+                    // 添加到下一个 ChunkList 节点
                     nextList.add(cur);
                 }
                 return true;
@@ -137,10 +174,12 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
     }
 
     void add(PoolChunk<T> chunk) {
+        // 超过当前 ChunkList 管理的 Chunk 的内存使用率上限，继续递归到下一个 ChunkList 节点进行添加。
         if (chunk.usage() >= maxUsage) {
             nextList.add(chunk);
             return;
         }
+        // 执行真正的添加
         add0(chunk);
     }
 
@@ -148,12 +187,17 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
      * Adds the {@link PoolChunk} to this {@link PoolChunkList}.
      */
     void add0(PoolChunk<T> chunk) {
+        // 把 chunk 标记为属于哪个 PoolChunkList
         chunk.parent = this;
+
+        // 如果当前PoolChunkList 还没有 head 节点
+        // 直接把 head 节点指向 chunk
         if (head == null) {
             head = chunk;
             chunk.prev = null;
             chunk.next = null;
         } else {
+            // 把chunk 放到 PoolChunkList 的head位置
             chunk.prev = null;
             chunk.next = head;
             head.prev = chunk;
@@ -162,11 +206,13 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
     }
 
     private void remove(PoolChunk<T> cur) {
+        // 当前节点为首节点，将下一个节点设置为头节点
         if (cur == head) {
             head = cur.next;
             if (head != null) {
                 head.prev = null;
             }
+            // 当前节点非首节点，将节点的上一个节点指向节点的下一个节点
         } else {
             PoolChunk<T> next = cur.next;
             cur.prev.next = next;

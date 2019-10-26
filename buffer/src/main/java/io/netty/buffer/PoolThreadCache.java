@@ -40,10 +40,23 @@ final class PoolThreadCache {
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(PoolThreadCache.class);
 
+    /**
+     * 对应的 Heap PoolArena 对象
+     */
     final PoolArena<byte[]> heapArena;
+    /**
+     * 对应的 Direct PoolArena 对象
+     */
     final PoolArena<ByteBuffer> directArena;
 
     // Hold the caches for the different size classes, which are tiny, small and normal.
+    /**
+     * 各种规格内存块缓存数组
+     *
+     * tiny     默认512 个
+     * small    默认256 个
+     * normal   默认64  个
+     */
     private final MemoryRegionCache<byte[]>[] tinySubPageHeapCaches;
     private final MemoryRegionCache<byte[]>[] smallSubPageHeapCaches;
     private final MemoryRegionCache<ByteBuffer>[] tinySubPageDirectCaches;
@@ -52,11 +65,37 @@ final class PoolThreadCache {
     private final MemoryRegionCache<ByteBuffer>[] normalDirectCaches;
 
     // Used for bitshifting when calculate the index of normal caches later
+    /**
+     * 用于计算请求分配的 normal 类型的内存块，在 {@link #normalDirectCaches} 数组中的位置
+     *
+     * 默认为 log2(pageSize) = log2(8192) = 13
+     */
     private final int numShiftsNormalDirect;
+    /**
+     * 用于计算请求分配的 normal 类型的内存块，在 {@link #normalHeapCaches} 数组中的位置
+     *
+     * 默认为 log2(pageSize) = log2(8192) = 13
+     */
     private final int numShiftsNormalHeap;
+
+    /**
+     * {@link #allocations} 到达该阀值，释放缓存
+     *
+     * 默认为 8192 次
+     *
+     * 当 allocations 到达该阀值时，调用 #free() 方法，释放缓存。同时，会重置 allocations 计数器为 0
+     *
+     * @see #free()
+     */
     private final int freeSweepAllocationThreshold;
+    /**
+     * 是否释放了
+     */
     private final AtomicBoolean freed = new AtomicBoolean();
 
+    /**
+     * 分配次数
+     */
     private int allocations;
 
     // TODO: Test if adding padding helps under contention
@@ -72,6 +111,8 @@ final class PoolThreadCache {
         this.freeSweepAllocationThreshold = freeSweepAllocationThreshold;
         this.heapArena = heapArena;
         this.directArena = directArena;
+
+        // 初始化 direct 模式 各种规格内存块缓存数组
         if (directArena != null) {
             tinySubPageDirectCaches = createSubPageCaches(
                     tinyCacheSize, PoolArena.numTinySubpagePools, SizeClass.Tiny);
@@ -82,6 +123,7 @@ final class PoolThreadCache {
             normalDirectCaches = createNormalCaches(
                     normalCacheSize, maxCachedBufferCapacity, directArena);
 
+            // directArena 又被多一个线程引用
             directArena.numThreadCaches.getAndIncrement();
         } else {
             // No directArea is configured so just null out all caches
@@ -90,6 +132,8 @@ final class PoolThreadCache {
             normalDirectCaches = null;
             numShiftsNormalDirect = -1;
         }
+
+        // 初始化 heap 模式 各种规格内存块缓存数组
         if (heapArena != null) {
             // Create the caches for the heap allocations
             tinySubPageHeapCaches = createSubPageCaches(
@@ -100,7 +144,7 @@ final class PoolThreadCache {
             numShiftsNormalHeap = log2(heapArena.pageSize);
             normalHeapCaches = createNormalCaches(
                     normalCacheSize, maxCachedBufferCapacity, heapArena);
-
+            // heapArena 又被多一个线程引用
             heapArena.numThreadCaches.getAndIncrement();
         } else {
             // No heapArea is configured so just null out all caches
@@ -110,6 +154,7 @@ final class PoolThreadCache {
             numShiftsNormalHeap = -1;
         }
 
+        // 校验参数，保证 PoolThreadCache 可缓存内存块。
         // Only check if there are caches in use.
         if ((tinySubPageDirectCaches != null || smallSubPageDirectCaches != null || normalDirectCaches != null
                 || tinySubPageHeapCaches != null || smallSubPageHeapCaches != null || normalHeapCaches != null)
@@ -122,8 +167,10 @@ final class PoolThreadCache {
     private static <T> MemoryRegionCache<T>[] createSubPageCaches(
             int cacheSize, int numCaches, SizeClass sizeClass) {
         if (cacheSize > 0 && numCaches > 0) {
+            // 创建数组
             @SuppressWarnings("unchecked")
             MemoryRegionCache<T>[] cache = new MemoryRegionCache[numCaches];
+            // 初始化数组
             for (int i = 0; i < cache.length; i++) {
                 // TODO: maybe use cacheSize / cache.length
                 cache[i] = new SubPageMemoryRegionCache<T>(cacheSize, sizeClass);
@@ -161,6 +208,7 @@ final class PoolThreadCache {
     }
 
     /**
+     * 从缓存中获取Tiny规格大小的内存块，初始化到 PooledByteBuf 对象中
      * Try to allocate a tiny buffer out of the cache. Returns {@code true} if successful {@code false} otherwise
      */
     boolean allocateTiny(PoolArena<?> area, PooledByteBuf<?> buf, int reqCapacity, int normCapacity) {
@@ -168,6 +216,7 @@ final class PoolThreadCache {
     }
 
     /**
+     * 从缓存中获取small规格大小的内存块，初始化到 PooledByteBuf 对象中
      * Try to allocate a small buffer out of the cache. Returns {@code true} if successful {@code false} otherwise
      */
     boolean allocateSmall(PoolArena<?> area, PooledByteBuf<?> buf, int reqCapacity, int normCapacity) {
@@ -175,7 +224,8 @@ final class PoolThreadCache {
     }
 
     /**
-     * Try to allocate a small buffer out of the cache. Returns {@code true} if successful {@code false} otherwise
+     * 从缓存中获取Normal规格大小的内存块，初始化到 PooledByteBuf 对象中
+     * Try to allocate a Normal buffer out of the cache. Returns {@code true} if successful {@code false} otherwise
      */
     boolean allocateNormal(PoolArena<?> area, PooledByteBuf<?> buf, int reqCapacity, int normCapacity) {
         return allocate(cacheForNormal(area, normCapacity), buf, reqCapacity);
@@ -187,11 +237,14 @@ final class PoolThreadCache {
             // no cache found so just return false here
             return false;
         }
+        // 分配内存块，并初始化到 MemoryRegionCache 中
         boolean allocated = cache.allocate(buf, reqCapacity);
+        // 到达阀值，整理缓存
         if (++ allocations >= freeSweepAllocationThreshold) {
             allocations = 0;
             trim();
         }
+        // 返回是否分配成功
         return allocated;
     }
 
@@ -201,10 +254,13 @@ final class PoolThreadCache {
      */
     @SuppressWarnings({ "unchecked", "rawtypes" })
     boolean add(PoolArena<?> area, PoolChunk chunk, long handle, int normCapacity, SizeClass sizeClass) {
+        // 获得对应的 MemoryRegionCache 对象
         MemoryRegionCache<?> cache = cache(area, normCapacity, sizeClass);
         if (cache == null) {
             return false;
         }
+
+        // 添加到 MemoryRegionCache 内存块中
         return cache.add(chunk, handle);
     }
 
@@ -227,6 +283,7 @@ final class PoolThreadCache {
         try {
             super.finalize();
         } finally {
+            // 清空缓存
             free();
         }
     }
@@ -237,6 +294,7 @@ final class PoolThreadCache {
     void free() {
         // As free() may be called either by the finalizer or by FastThreadLocal.onRemoval(...) we need to ensure
         // we only call this one time.
+        // 清空缓存
         if (freed.compareAndSet(false, true)) {
             int numFreed = free(tinySubPageDirectCaches) +
                     free(smallSubPageDirectCaches) +
@@ -250,10 +308,12 @@ final class PoolThreadCache {
                         Thread.currentThread().getName());
             }
 
+            // 减小 directArena 的线程引用计数
             if (directArena != null) {
                 directArena.numThreadCaches.getAndDecrement();
             }
 
+            // 减小 heapArena 的线程引用计数
             if (heapArena != null) {
                 heapArena.numThreadCaches.getAndDecrement();
             }
@@ -304,7 +364,11 @@ final class PoolThreadCache {
         cache.trim();
     }
 
+    /**
+     * 获取Tiny 规格对应所在的 MemoryRegionCache 对象
+     */
     private MemoryRegionCache<?> cacheForTiny(PoolArena<?> area, int normCapacity) {
+        // 获得数组下标
         int idx = PoolArena.tinyIdx(normCapacity);
         if (area.isDirect()) {
             return cache(tinySubPageDirectCaches, idx);
@@ -312,7 +376,11 @@ final class PoolThreadCache {
         return cache(tinySubPageHeapCaches, idx);
     }
 
+    /**
+     * 获取Small 规格对应所在的 MemoryRegionCache 对象
+     */
     private MemoryRegionCache<?> cacheForSmall(PoolArena<?> area, int normCapacity) {
+        // 获得数组下标
         int idx = PoolArena.smallIdx(normCapacity);
         if (area.isDirect()) {
             return cache(smallSubPageDirectCaches, idx);
@@ -320,19 +388,26 @@ final class PoolThreadCache {
         return cache(smallSubPageHeapCaches, idx);
     }
 
+    /**
+     * 获取Normal 规格对应所在的 MemoryRegionCache 对象
+     */
     private MemoryRegionCache<?> cacheForNormal(PoolArena<?> area, int normCapacity) {
         if (area.isDirect()) {
+            // 获得数组下标
             int idx = log2(normCapacity >> numShiftsNormalDirect);
             return cache(normalDirectCaches, idx);
         }
+        // 获得数组下标
         int idx = log2(normCapacity >> numShiftsNormalHeap);
         return cache(normalHeapCaches, idx);
     }
 
     private static <T> MemoryRegionCache<T> cache(MemoryRegionCache<T>[] cache, int idx) {
+        // 不在范围内，说明不缓存该容量的内存块
         if (cache == null || idx > cache.length - 1) {
             return null;
         }
+        // 获得 MemoryRegionCache 对象
         return cache[idx];
     }
 
@@ -367,9 +442,21 @@ final class PoolThreadCache {
     }
 
     private abstract static class MemoryRegionCache<T> {
+        /**
+         * {@link #queue} 队列大小
+         */
         private final int size;
+        /**
+         * 队列。里面存储内存块
+         */
         private final Queue<Entry<T>> queue;
+        /**
+         * 内存规格
+         */
         private final SizeClass sizeClass;
+        /**
+         * 分配次数计数器
+         */
         private int allocations;
 
         MemoryRegionCache(int size, SizeClass sizeClass) {
@@ -461,8 +548,17 @@ final class PoolThreadCache {
         }
 
         static final class Entry<T> {
+            /**
+             * Recycler 处理器，用于回收 Entry 对象
+             */
             final Handle<Entry<?>> recyclerHandle;
+            /**
+             * PoolChunk 对象
+             */
             PoolChunk<T> chunk;
+            /**
+             * 内存块在 {@link #chunk} 的位置
+             */
             long handle = -1;
 
             Entry(Handle<Entry<?>> recyclerHandle) {

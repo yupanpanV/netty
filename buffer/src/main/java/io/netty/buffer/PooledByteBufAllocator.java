@@ -79,7 +79,7 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
      */
     private static final int DEFAULT_CACHE_TRIM_INTERVAL;
     /**
-     * 默认是否使用 {@link PoolThreadCache}
+     * 默认是否使用 {@link PoolThreadCache} 默认 true
      */
     private static final boolean DEFAULT_USE_CACHE_FOR_ALL_THREADS;
     /**
@@ -185,18 +185,51 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
         }
     }
 
+    /**
+     * 单例
+     */
     public static final PooledByteBufAllocator DEFAULT =
             new PooledByteBufAllocator(PlatformDependent.directBufferPreferred());
 
+    /**
+     * Heap PoolArena 数组
+     */
     private final PoolArena<byte[]>[] heapArenas;
+    /**
+     * Direct PoolArena 数组
+     */
     private final PoolArena<ByteBuffer>[] directArenas;
+    /**
+     * {@link PoolThreadCache} 的 tiny 内存块缓存数组的大小
+     */
     private final int tinyCacheSize;
+    /**
+     * {@link PoolThreadCache} 的 small 内存块缓存数组的大小
+     */
     private final int smallCacheSize;
+    /**
+     * {@link PoolThreadCache} 的 normal 内存块缓存数组的大小
+     */
     private final int normalCacheSize;
+    /**
+     * PoolArenaMetric 数组
+     */
     private final List<PoolArenaMetric> heapArenaMetrics;
+    /**
+     * PoolArenaMetric 数组
+     */
     private final List<PoolArenaMetric> directArenaMetrics;
+    /**
+     * 线程变量，用于获得 PoolThreadCache 对象。
+     */
     private final PoolThreadLocalCache threadCache;
+    /**
+     * Chunk 大小
+     */
     private final int chunkSize;
+    /**
+     * PooledByteBufAllocatorMetric 对象
+     */
     private final PooledByteBufAllocatorMetric metric;
 
     public PooledByteBufAllocator() {
@@ -314,14 +347,18 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
     }
 
     private static int validateAndCalculatePageShifts(int pageSize) {
+        // 默认情况下，pageSize = 8KB = 8 * 1024= 8096 ，pageShift = 8192
+
+        // 校验
         if (pageSize < MIN_PAGE_SIZE) {
             throw new IllegalArgumentException("pageSize: " + pageSize + " (expected: " + MIN_PAGE_SIZE + ")");
         }
 
+        // 校验 Page 的内存大小，必须是 2 的指数级
         if ((pageSize & pageSize - 1) != 0) {
             throw new IllegalArgumentException("pageSize: " + pageSize + " (expected: power of 2)");
         }
-
+        // 计算 pageShift
         // Logarithm base 2. At this point we know that pageSize is a power of two.
         return Integer.SIZE - 1 - Integer.numberOfLeadingZeros(pageSize);
     }
@@ -331,6 +368,7 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
             throw new IllegalArgumentException("maxOrder: " + maxOrder + " (expected: 0-14)");
         }
 
+        // 计算 chunkSize
         // Ensure the resulting chunkSize does not overflow.
         int chunkSize = pageSize;
         for (int i = maxOrder; i > 0; i --) {
@@ -345,18 +383,24 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
 
     @Override
     protected ByteBuf newHeapBuffer(int initialCapacity, int maxCapacity) {
+        // 获得线程的 PoolThreadCache 对象
         PoolThreadCache cache = threadCache.get();
+
+        // 从 heapArena 中，分配 Heap PooledByteBuf 对象，基于池化
         PoolArena<byte[]> heapArena = cache.heapArena;
 
         final ByteBuf buf;
         if (heapArena != null) {
             buf = heapArena.allocate(cache, initialCapacity, maxCapacity);
+
+            // 直接创建 Heap ByteBuf 对象，基于非池化
         } else {
             buf = PlatformDependent.hasUnsafe() ?
                     new UnpooledUnsafeHeapByteBuf(this, initialCapacity, maxCapacity) :
                     new UnpooledHeapByteBuf(this, initialCapacity, maxCapacity);
         }
 
+        // 将 ByteBuf 装饰成 LeakAware ( 可检测内存泄露 )的 ByteBuf 对象
         return toLeakAwareBuffer(buf);
     }
 
@@ -470,38 +514,59 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
     }
 
     final class PoolThreadLocalCache extends FastThreadLocal<PoolThreadCache> {
+        /**
+         * 是否使用缓存
+         */
         private final boolean useCacheForAllThreads;
 
         PoolThreadLocalCache(boolean useCacheForAllThreads) {
             this.useCacheForAllThreads = useCacheForAllThreads;
         }
 
+        /**
+         * 初始化线程的 PoolThreadCache 对象
+         */
         @Override
         protected synchronized PoolThreadCache initialValue() {
+
+            // 分别获取线程使用最少的 heapArena 和 directArena 对象，基于 `PoolArena.numThreadCaches` 属性。
             final PoolArena<byte[]> heapArena = leastUsedArena(heapArenas);
             final PoolArena<ByteBuffer> directArena = leastUsedArena(directArenas);
 
+            // 创建开启缓存的 PoolThreadCache 对象
             Thread current = Thread.currentThread();
             if (useCacheForAllThreads || current instanceof FastThreadLocalThread) {
                 return new PoolThreadCache(
                         heapArena, directArena, tinyCacheSize, smallCacheSize, normalCacheSize,
                         DEFAULT_MAX_CACHED_BUFFER_CAPACITY, DEFAULT_CACHE_TRIM_INTERVAL);
             }
+
+            // 创建不进行缓存的 PoolThreadCache 对象
             // No caching so just use 0 as sizes.
             return new PoolThreadCache(heapArena, directArena, 0, 0, 0, 0, 0);
         }
 
         @Override
         protected void onRemoval(PoolThreadCache threadCache) {
+            // 释放缓存
             threadCache.free();
         }
 
+        /**
+         * 从 PoolArena 数组中，获取线程使用最少的 PoolArena 对象
+         * 基于 PoolArena.numThreadCaches 属性。
+         * 通过这样的方式，尽可能让 PoolArena 平均分布在不同线程，从而尽肯能避免线程的同步和竞争问题
+         */
         private <T> PoolArena<T> leastUsedArena(PoolArena<T>[] arenas) {
+            // 一个都没有，返回 null
             if (arenas == null || arenas.length == 0) {
                 return null;
             }
 
+            // 获得第零个 PoolArena 对象
             PoolArena<T> minArena = arenas[0];
+
+            // 比较后面的 PoolArena 对象，选择线程使用最少的
             for (int i = 1; i < arenas.length; i++) {
                 PoolArena<T> arena = arenas[i];
                 if (arena.numThreadCaches.get() < minArena.numThreadCaches.get()) {

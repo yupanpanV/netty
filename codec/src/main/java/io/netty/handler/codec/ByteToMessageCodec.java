@@ -32,10 +32,18 @@ import java.util.List;
  * annotated with {@link @Sharable}.
  */
 public abstract class ByteToMessageCodec<I> extends ChannelDuplexHandler {
-
+    /**
+     * 类型匹配器
+     */
     private final TypeParameterMatcher outboundMsgMatcher;
+    /**
+     * 编码器 对象
+     */
     private final MessageToByteEncoder<I> encoder;
 
+    /**
+     * 解码器 对象
+     */
     private final ByteToMessageDecoder decoder = new ByteToMessageDecoder() {
         @Override
         public void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
@@ -70,8 +78,11 @@ public abstract class ByteToMessageCodec<I> extends ChannelDuplexHandler {
      *                              {@link ByteBuf}, which is backed by an byte array.
      */
     protected ByteToMessageCodec(boolean preferDirect) {
+        // 禁止共享
         ensureNotSharable();
+        // 获得 matcher
         outboundMsgMatcher = TypeParameterMatcher.find(this, ByteToMessageCodec.class, "I");
+        // 创建 Encoder 对象
         encoder = new Encoder(preferDirect);
     }
 

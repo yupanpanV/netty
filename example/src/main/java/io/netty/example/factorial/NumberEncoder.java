@@ -38,10 +38,12 @@ public class NumberEncoder extends MessageToByteEncoder<Number> {
             v = new BigInteger(String.valueOf(msg));
         }
 
+        // 转换为字节数组
         // Convert the number into a byte array.
         byte[] data = v.toByteArray();
         int dataLength = data.length;
 
+        // Write a message.
         // Write a message.
         out.writeByte((byte) 'F'); // magic number
         out.writeInt(dataLength);  // data length

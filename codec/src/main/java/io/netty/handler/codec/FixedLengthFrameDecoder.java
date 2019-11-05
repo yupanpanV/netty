@@ -38,6 +38,9 @@ import java.util.List;
  */
 public class FixedLengthFrameDecoder extends ByteToMessageDecoder {
 
+    /**
+     * 固定长度
+     */
     private final int frameLength;
 
     /**
@@ -55,7 +58,10 @@ public class FixedLengthFrameDecoder extends ByteToMessageDecoder {
 
     @Override
     protected final void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+        // 解码消息
         Object decoded = decode(ctx, in);
+
+        // 添加到 out 结果中
         if (decoded != null) {
             out.add(decoded);
         }
@@ -71,9 +77,11 @@ public class FixedLengthFrameDecoder extends ByteToMessageDecoder {
      */
     protected Object decode(
             @SuppressWarnings("UnusedParameters") ChannelHandlerContext ctx, ByteBuf in) throws Exception {
+        // 可读字节不够 frameLength 长度，无法解码出消息
         if (in.readableBytes() < frameLength) {
             return null;
         } else {
+            // 可读字节足够 frameLength 长度，解码出一条消息。
             return in.readRetainedSlice(frameLength);
         }
     }
